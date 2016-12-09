@@ -50,7 +50,7 @@ int main(int argc, char **argv) {
     signal(SIGSEGV, hdlr_fin);
 
     /* creation de la socket client */
-    if ((server = socket(PF_UNIX, SOCK_STREAM, 0)) < 0) {
+    if ((server = socket(PF_UNIX, SOCK_SEQPACKET, 0)) < 0) {
         perror("socket()");
         exit(EXIT_FAILURE);
     }
@@ -59,7 +59,7 @@ int main(int argc, char **argv) {
        laquelle on va se connecter */
     memset(&a, 0, sizeof (a)); /* nettoyage de la structure */
     a.sun_family = AF_UNIX; /* famille de l'adresse */
-    strncpy(a.sun_path, argv[1], 108 /*UNIX_PATH_MAX*/);
+    strncpy(a.sun_path, argv[1], sizeof (a.sun_path) - 1 /* 108 UNIX_PATH_MAX*/);
 
     /* Connexion au serveur */
     if (connect(server, (struct sockaddr *) &a, sizeof (a)) < 0) {
@@ -73,6 +73,8 @@ int main(int argc, char **argv) {
     for (;;) {
         int nfds = 0;
         fd_set rd_set; /* Cree le catalogue des sockets interessantes en lecture */
+        //fd_set wd_set;
+        //fd_set ed_set;
 
         /* Nettoyage de ce catalogue */
         FD_ZERO(&rd_set);
@@ -85,8 +87,12 @@ int main(int argc, char **argv) {
         FD_SET(STDIN_FILENO, &rd_set);
         nfds = max(nfds, STDIN_FILENO); /* pour le principe */
 
+        struct timeval tv;
+        /* Attends jusqu’à 5 secondes. */
+        tv.tv_sec = 5;
+        tv.tv_usec = 0;
         /* Se bloque en attente de quelque chose d'interessant */
-        r = select( ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ?);
+        r = select(nfds, &rd_set, NULL, NULL, &tv);
 
         if (r == -1 && errno == EINTR)
             continue;
@@ -98,7 +104,7 @@ int main(int argc, char **argv) {
         if (FD_ISSET(server, &rd_set)) { /* evenement socket */
             /* Hypothese : on lit le paquet d'un seul coup !
                Prevoir une buffer assez grand */
-            rd_sz = recv( ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ?);
+            rd_sz = recv(server, buffer, BUF_SIZE, 0);
             if (rd_sz < 0) {
                 perror("recv()");
                 close(server);
@@ -109,7 +115,7 @@ int main(int argc, char **argv) {
             } else if (rd_sz > 0) {
                 printf("Reception de %d octets : [\n", rd_sz);
                 /* Ecriture sur le staandard de sortie de ce qui est recu du serveur */
-                write( ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ?);
+                write(STDOUT_FILENO, buffer, rd_sz);
                 printf("]\n");
             }
         }
@@ -120,7 +126,7 @@ int main(int argc, char **argv) {
             fgets(buffer, BUF_SIZE, stdin);
             rd_sz = strlen(buffer);
             /* envoi vers le serveur */
-            wr_sz = send( ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ?);
+            wr_sz = send(server, buffer, rd_sz, 0); 
             if (wr_sz < 0) {
                 perror("send()");
                 close(server);

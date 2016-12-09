@@ -57,38 +57,43 @@ int main(int argc, char **argv) {
     clients = (int *) malloc(max_clients * sizeof (int));
     for (i = 0; i < max_clients; i++) /* initialisation de cette structure */
         clients[i] = -1; /* convention choisie  -1 = pas de client */
-
+    printf("%d client entries init\n", max_clients);
 
     /* creation de la socket serveur */
-    if ((server = socket(PF_UNIX, SOCK_STREAM, 0)) < 0) {
+    if ((server = socket(PF_UNIX, SOCK_SEQPACKET, 0)) < 0) {
         perror("socket()");
         exit(EXIT_FAILURE);
     }
+    printf("Socket init\n");
 
     /* preparation de la structure d'adresse de la socket serveur sur 
        laquelle on attend les connexions */
     memset(&a, 0, sizeof (a));
     a.sun_family = AF_UNIX;
-    sockname = strncpy(a.sun_path, argv[0], 108);
+    sockname = strncpy(a.sun_path, (char *) argv[1], sizeof (a.sun_path) - 1);
 
-    if (bind(server, (struct sockaddr *) &a, sizeof (a)) < 0) {
+    if (bind(server, (struct sockaddr *) &a, sizeof (struct sockaddr_un)) < 0) {
         perror("bind()");
         close(server);
         exit(EXIT_FAILURE);
     }
+    printf("Socket bind\n");
+
     if (listen(server, max_clients) < 0) {
         perror("listen()");
         close(server);
         exit(EXIT_FAILURE);
     }
+    printf("Socket listening\n");
 
     /* le corps du programme */
     printf("Demarrage du bus.\n");
     for (;;) {
+        printf("-------\nLoop start\n");
         int nfds = 0;
         fd_set rd_set; /* Catalogue des sockets interessantes en lecture */
-        fd_set wd_set;
-        fd_set ed_set;
+        //fd_set wd_set;
+        //fd_set ed_set;
 
         /* Nettoyage de ce catalogue */
         FD_ZERO(&rd_set);
@@ -96,7 +101,10 @@ int main(int argc, char **argv) {
         /* On y place les descripteurs interessants en lecture */
         /* On s'interesse a la socket du serveur pour d'eventuelles connexions */
         FD_SET(server, &rd_set);
+        //FD_SET(STDIN_FILENO, &rd_set); //TEST
+
         nfds = max(nfds, server);
+        printf("DEBUG: before client loop nfds %d, server %d\n", nfds, server);
         /* ajoute les sockets des clients */
         for (i = 0; i < max_clients; i++) {
             if (clients[i] > 0) {
@@ -104,25 +112,36 @@ int main(int argc, char **argv) {
                 nfds = max(nfds, clients[i]);
             }
         }
+        printf("DEBUG: after client loop nfds %d, server %d\n", nfds, server);
         struct timeval tv;
         /* Attends jusqu’à 5 secondes. */
         tv.tv_sec = 5;
         tv.tv_usec = 0;
-        /* Se bloque en attente de quelque chose d'interessant sur une socket */
-        r = select(nfds, &rd_set, &wd_set, &ed_set, &tv);
 
-        if (r == -1 && errno == EINTR)
+        /* Se bloque en attente de quelque chose d'interessant sur une socket */
+        r = select(nfds, &rd_set, NULL, NULL, &tv);
+        printf("Select set\n");
+
+        if (r == -1 && errno == EINTR) {
             continue;
+        }
         if (r < 0) {
             perror("select()");
             exit(EXIT_FAILURE);
+        }
+        if (r == 0) {
+            printf("No data since last 5 seconds\n");
         }
 
         struct sockaddr_storage from;
         socklen_t fromlen = sizeof from;
 
-        if (FD_ISSET(server, &rd_set)) { /* on a une nouvelle connection */
-            r = accept(r, (struct sockaddr *) &from, &fromlen);
+        //TEST
+        //wr_sz = send(server, "test", sizeof("test"), 0); 
+
+        if (FD_ISSET(server, &rd_set)) { /* on a une nouvelle connection */ //TEST
+            printf("New connection\n");
+            r = accept(server, (struct sockaddr *) &from, &fromlen);
             if (r < 0) {
                 perror("accept()");
             } else {
@@ -143,9 +162,10 @@ int main(int argc, char **argv) {
         /* Pour chaque donnee lue, on la renvoie a tous les autres */
         for (i = 0; i < max_clients; i++) {
             if ((clients[i] > 0) && FD_ISSET(clients[i], &rd_set)) {
+                printf("Read loop data from client %d\n", i);
                 /* Hypothese : on lit le paquet d'un seul coup !
                    Prevoir une buffer assez grand */
-                rd_sz = recv(clients[i], buffer, BUF_SIZE, MSG_WAITFORONE); //TODO
+                rd_sz = recv(clients[i], buffer, BUF_SIZE, MSG_WAITALL);
                 if (rd_sz < 0) {
                     perror("recv()");
                     fprintf(stderr, "...probleme avec le client %d\n", i);
@@ -163,7 +183,7 @@ int main(int argc, char **argv) {
                     /* Envoie le paquet (en un seul coup) a tous les autres clients */
                     for (j = 0; j < max_clients; j++) {
                         if ((clients[j] > 0) && (i != j)) {
-                            wr_sz = send(clients[j], buffer, rd_sz, MSG_DONTWAIT); //TODO
+                            wr_sz = send(clients[j], buffer, rd_sz, 0);
                             if (wr_sz < 0) {
                                 /* cloture du client j */
                                 perror("send()");
