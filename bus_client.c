@@ -9,6 +9,14 @@
 #include <sys/un.h>
 #include <errno.h>
 
+#define ANSI_COLOR_RED     "\x1b[31m"
+#define ANSI_COLOR_GREEN   "\x1b[32m"
+#define ANSI_COLOR_YELLOW  "\x1b[33m"
+#define ANSI_COLOR_BLUE    "\x1b[34m"
+#define ANSI_COLOR_MAGENTA "\x1b[35m"
+#define ANSI_COLOR_CYAN    "\x1b[36m"
+#define ANSI_COLOR_RESET   "\x1b[0m"
+
 #define BUF_SIZE 1024
 
 int server; /* socket du serveur en attente de connection */
@@ -69,7 +77,7 @@ int main(int argc, char **argv) {
     }
 
     /* le corps du programme */
-    printf("Le client est accroche au bus.\n");
+    printf(ANSI_COLOR_GREEN "Le client est accroche au bus." ANSI_COLOR_RESET "\n");
     for (;;) {
         int nfds = 0;
         fd_set rd_set; /* Cree le catalogue des sockets interessantes en lecture */
@@ -92,7 +100,7 @@ int main(int argc, char **argv) {
         tv.tv_sec = 5;
         tv.tv_usec = 0;
         /* Se bloque en attente de quelque chose d'interessant */
-        r = select(nfds, &rd_set, NULL, NULL, &tv);
+        r = select(nfds + 1, &rd_set, NULL, NULL, &tv);
 
         if (r == -1 && errno == EINTR)
             continue;
@@ -104,19 +112,19 @@ int main(int argc, char **argv) {
         if (FD_ISSET(server, &rd_set)) { /* evenement socket */
             /* Hypothese : on lit le paquet d'un seul coup !
                Prevoir une buffer assez grand */
-            rd_sz = recv(server, buffer, BUF_SIZE, 0);
+            rd_sz = recv(server, buffer, BUF_SIZE, MSG_WAITALL);
             if (rd_sz < 0) {
                 perror("recv()");
                 close(server);
                 exit(EXIT_FAILURE);
             } else if (rd_sz == 0) {
-                printf("Le bus est arrete !\n");
+                printf(ANSI_COLOR_RED "Le bus est arrete !" ANSI_COLOR_RESET "\n");
                 exit(EXIT_SUCCESS);
             } else if (rd_sz > 0) {
-                printf("Reception de %d octets : [\n", rd_sz);
+                printf("Reception de %d octets : [" ANSI_COLOR_BLUE "\n", rd_sz);
                 /* Ecriture sur le staandard de sortie de ce qui est recu du serveur */
                 write(STDOUT_FILENO, buffer, rd_sz);
-                printf("]\n");
+                printf(ANSI_COLOR_RESET "]\n");
             }
         }
 
@@ -126,16 +134,16 @@ int main(int argc, char **argv) {
             fgets(buffer, BUF_SIZE, stdin);
             rd_sz = strlen(buffer);
             /* envoi vers le serveur */
-            wr_sz = send(server, buffer, rd_sz, 0); 
+            wr_sz = send(server, buffer, rd_sz, 0);
             if (wr_sz < 0) {
                 perror("send()");
                 close(server);
                 exit(EXIT_FAILURE);
             } else if (wr_sz == 0) {
-                printf("Le bus est arrete !\n");
+                printf(ANSI_COLOR_RED "Le bus est arrete !" ANSI_COLOR_RESET "\n");
                 exit(EXIT_SUCCESS);
             } else if (wr_sz > 0) {
-                printf("Envoie de %d octets\n", wr_sz);
+                printf(ANSI_COLOR_GREEN "Envoie de %d octets" ANSI_COLOR_RESET "\n", wr_sz);
             }
         }
 

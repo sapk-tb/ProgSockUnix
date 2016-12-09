@@ -9,6 +9,14 @@
 #include <sys/un.h>
 #include <errno.h>
 
+#define ANSI_COLOR_RED     "\x1b[31m"
+#define ANSI_COLOR_GREEN   "\x1b[32m"
+#define ANSI_COLOR_YELLOW  "\x1b[33m"
+#define ANSI_COLOR_BLUE    "\x1b[34m"
+#define ANSI_COLOR_MAGENTA "\x1b[35m"
+#define ANSI_COLOR_CYAN    "\x1b[36m"
+#define ANSI_COLOR_RESET   "\x1b[0m"
+
 #define BUF_SIZE 1024
 
 int server; /* socket du serveur en attente de connection */
@@ -104,7 +112,7 @@ int main(int argc, char **argv) {
         //FD_SET(STDIN_FILENO, &rd_set); //TEST
 
         nfds = max(nfds, server);
-        printf("DEBUG: before client loop nfds %d, server %d\n", nfds, server);
+        //printf("DEBUG: before client loop nfds %d, server %d\n", nfds, server);
         /* ajoute les sockets des clients */
         for (i = 0; i < max_clients; i++) {
             if (clients[i] > 0) {
@@ -112,14 +120,14 @@ int main(int argc, char **argv) {
                 nfds = max(nfds, clients[i]);
             }
         }
-        printf("DEBUG: after client loop nfds %d, server %d\n", nfds, server);
+        //printf("DEBUG: after client loop nfds %d, server %d\n", nfds, server);
         struct timeval tv;
-        /* Attends jusqu’à 5 secondes. */
-        tv.tv_sec = 5;
+        /* Attends jusqu’à 15 secondes. */
+        tv.tv_sec = 15;
         tv.tv_usec = 0;
 
         /* Se bloque en attente de quelque chose d'interessant sur une socket */
-        r = select(nfds, &rd_set, NULL, NULL, &tv);
+        r = select(nfds+1, &rd_set, NULL, NULL, &tv);
         printf("Select set\n");
 
         if (r == -1 && errno == EINTR) {
@@ -130,7 +138,7 @@ int main(int argc, char **argv) {
             exit(EXIT_FAILURE);
         }
         if (r == 0) {
-            printf("No data since last 5 seconds\n");
+            printf("No data since last 15 seconds\n");
         }
 
         struct sockaddr_storage from;
@@ -140,7 +148,7 @@ int main(int argc, char **argv) {
         //wr_sz = send(server, "test", sizeof("test"), 0); 
 
         if (FD_ISSET(server, &rd_set)) { /* on a une nouvelle connection */ //TEST
-            printf("New connection\n");
+            printf(ANSI_COLOR_GREEN "New connection" ANSI_COLOR_RESET "\n");
             r = accept(server, (struct sockaddr *) &from, &fromlen);
             if (r < 0) {
                 perror("accept()");
@@ -176,10 +184,10 @@ int main(int argc, char **argv) {
                     close(clients[i]);
                     clients[i] = -1;
                 } else if (rd_sz > 0) {
-                    printf("Reception de %d octets du client %d : [\n", rd_sz, i);
+                    printf("Reception de %d octets du client %d : [" ANSI_COLOR_BLUE "\n", rd_sz, i);
                     /* On ecrit sur la sortie standard */
                     write(STDOUT_FILENO, buffer, rd_sz);
-                    printf("]\n");
+                    printf(ANSI_COLOR_RESET "]\n");
                     /* Envoie le paquet (en un seul coup) a tous les autres clients */
                     for (j = 0; j < max_clients; j++) {
                         if ((clients[j] > 0) && (i != j)) {
